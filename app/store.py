@@ -98,6 +98,50 @@ CREATE TABLE IF NOT EXISTS totals (
 CREATE TABLE IF NOT EXISTS manifests (
     batch_id TEXT PRIMARY KEY, json TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS recon_days (
+    day TEXT PRIMARY KEY,
+    status TEXT NOT NULL DEFAULT 'open',
+    order_total TEXT NOT NULL DEFAULT '0.00',
+    payment_total TEXT NOT NULL DEFAULT '0.00',
+    diff TEXT NOT NULL DEFAULT '0.00',
+    adjust_total TEXT NOT NULL DEFAULT '0.00',
+    order_count INTEGER NOT NULL DEFAULT 0,
+    payment_count INTEGER NOT NULL DEFAULT 0,
+    cutoff_seq INTEGER NOT NULL DEFAULT 0,
+    closed_at TEXT,
+    close_run_id TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS recon_entries (
+    entry_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    seq INTEGER NOT NULL UNIQUE,
+    day TEXT NOT NULL,
+    biz_day TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    ref TEXT NOT NULL,
+    order_id TEXT NOT NULL DEFAULT '',
+    amount TEXT NOT NULL,
+    fingerprint TEXT NOT NULL UNIQUE,
+    link_day TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_recon_entries_day ON recon_entries(day);
+CREATE INDEX IF NOT EXISTS idx_recon_entries_biz ON recon_entries(biz_day);
+CREATE INDEX IF NOT EXISTS idx_recon_entries_ref ON recon_entries(ref);
+CREATE TABLE IF NOT EXISTS recon_runs (
+    run_id TEXT PRIMARY KEY,
+    source TEXT NOT NULL,
+    status TEXT NOT NULL,
+    total INTEGER NOT NULL DEFAULT 0,
+    processed INTEGER NOT NULL DEFAULT 0,
+    booked INTEGER NOT NULL DEFAULT 0,
+    skipped INTEGER NOT NULL DEFAULT 0,
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    finished_at TEXT
+);
 """
 
 
@@ -112,6 +156,21 @@ class Store:
     def connect(self):
         conn = sqlite3.connect(self.path, timeout=15.0)
         conn.row_factory = sqlite3.Row
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    @contextmanager
+    def write_txn(self):
+        """对账写事务：BEGIN IMMEDIATE 先拿写锁，关账与补数在同一截点上串行。"""
+        conn = sqlite3.connect(self.path, timeout=15.0)
+        conn.row_factory = sqlite3.Row
+        conn.execute("BEGIN IMMEDIATE")
         try:
             yield conn
             conn.commit()
@@ -387,6 +446,70 @@ class Store:
     def _all(self, sql: str, args: tuple) -> list[dict]:
         with self.connect() as conn:
             return [dict(r) for r in conn.execute(sql, args).fetchall()]
+
+    # ---------- 支付对账（跨批次流水账，append-only） ----------
+    def recon_create_run(self, run: dict) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """INSERT INTO recon_runs (run_id, source, status, total, processed,
+                        booked, skipped, note, created_at, finished_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (run["run_id"], run["source"], run["status"], run.get("total", 0),
+                 run.get("processed", 0), run.get("booked", 0), run.get("skipped", 0),
+                 run.get("note", ""), run["created_at"], run.get("finished_at")))
+
+    def recon_run(self, run_id: str) -> dict | None:
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM recon_runs WHERE run_id=?",
+                               (run_id,)).fetchone()
+        return dict(row) if row else None
+
+    def recon_runs(self, limit: int = 20) -> list[dict]:
+        return self._all(
+            "SELECT * FROM recon_runs ORDER BY created_at DESC, rowid DESC LIMIT ?",
+            (limit,))
+
+    def recon_latest_incomplete_run(self) -> dict | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM recon_runs WHERE status IN ('running','partial','aborted') "
+                "ORDER BY created_at DESC, rowid DESC LIMIT 1").fetchone()
+        return dict(row) if row else None
+
+    def recon_days(self) -> list[dict]:
+        return self._all("SELECT * FROM recon_days ORDER BY day", ())
+
+    def recon_day(self, day: str) -> dict | None:
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM recon_days WHERE day=?", (day,)).fetchone()
+        return dict(row) if row else None
+
+    def recon_entries(self, *, day: str | None = None,
+                      biz_day: str | None = None) -> list[dict]:
+        if day is not None:
+            return self._all(
+                "SELECT * FROM recon_entries WHERE day=? OR biz_day=? ORDER BY seq",
+                (day, day))
+        if biz_day is not None:
+            return self._all(
+                "SELECT * FROM recon_entries WHERE biz_day=? ORDER BY seq", (biz_day,))
+        return self._all("SELECT * FROM recon_entries ORDER BY seq", ())
+
+    def recon_adjustments(self) -> list[dict]:
+        return self._all(
+            "SELECT * FROM recon_entries WHERE link_day != '' ORDER BY seq", ())
+
+    def recon_fingerprints(self) -> set:
+        with self.connect() as conn:
+            rows = conn.execute("SELECT fingerprint FROM recon_entries").fetchall()
+        return {row["fingerprint"] for row in rows}
+
+    def count_recon(self) -> dict:
+        with self.connect() as conn:
+            return {
+                table: conn.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()["n"]
+                for table in ("recon_days", "recon_entries", "recon_runs")
+            }
 
 
 def _dec(text: str) -> Decimal:

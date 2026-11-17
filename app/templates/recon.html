@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block head_meta %}账日 {{ payload.totals.day_count }} 个 · 已关 {{ payload.totals.closed_count }}{% endblock %}
+
+{% block main %}
+<section class="section">
+  <h2>对账运行</h2>
+  <div class="toolbar">
+    <button type="button" data-action="recon-run">运行对账</button>
+    {% if payload.resumable_run_id %}
+    <button type="button" data-action="recon-resume">续跑 {{ payload.resumable_run_id }}</button>
+    {% endif %}
+  </div>
+  <p class="notice" data-notice hidden></p>
+  <div class="totalbar">
+    <span>应收 <b>{{ payload.totals.order_total | dec }}</b> {{ money_unit }}</span>
+    <span>实收 <b>{{ payload.totals.payment_total | dec }}</b> {{ money_unit }}</span>
+    <span>差异 <b>{{ payload.totals.diff | dec }}</b> {{ money_unit }}</span>
+    <span>调整 <b>{{ payload.totals.adjust_total | dec }}</b> {{ money_unit }}</span>
+    <span>未平未关 <b>{{ payload.totals.unbalanced_open }}</b> 日</span>
+  </div>
+</section>
+
+<section class="section">
+  <h2>按日对账</h2>
+  <div class="wide">
+    <table class="spec" data-sortable>
+      <caption>差异 = 实收 - 应收，只算本日业务；调整列是他日补记，不计入本日差异</caption>
+      <thead>
+        <tr><th>账日</th><th>状态</th><th class="num">应收</th><th class="num">实收</th><th class="num">差异</th><th class="num">调整</th><th class="num">订单</th><th class="num">支付</th><th class="num">截点</th><th>操作</th></tr>
+      </thead>
+      <tbody>
+        {% for row in payload.days %}
+        <tr>
+          <td class="mono">{{ row.day }}</td>
+          <td>
+            <span class="flag" data-tone="{{ 'info' if row.status == 'closed' else 'warn' }}">{{ row.status_label }}</span>
+            {% if row.status == 'open' and not row.balanced %}<span class="flag" data-tone="bad">差</span>{% endif %}
+          </td>
+          <td class="num">{{ row.order_total | dec }}</td>
+          <td class="num">{{ row.payment_total | dec }}</td>
+          <td class="num">{{ row.diff | dec }}</td>
+          <td class="num">{{ row.adjust_total | dec }}</td>
+          <td class="num">{{ row.order_count }}</td>
+          <td class="num">{{ row.payment_count }}</td>
+          <td class="num">{{ row.cutoff_seq if row.status == 'closed' else '—' }}</td>
+          <td>
+            {% if row.status == 'open' %}
+            <button type="button" data-action="recon-close" data-day="{{ row.day }}">关账</button>
+            {% else %}
+            <span class="hint">{{ row.closed_at | ts }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="10" class="empty">还没有账日，先运行对账。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section">
+  <h2>调整明细</h2>
+  <div class="wide">
+    <table class="spec dense" data-sortable>
+      <caption>原日已关账的迟到、更正与冲回，转入下一未关账日并关联原日</caption>
+      <thead>
+        <tr><th class="num">序号</th><th>入账日</th><th>原日</th><th>类型</th><th>流水</th><th class="num">金额</th><th>来源</th></tr>
+      </thead>
+      <tbody>
+        {% for row in adjustments %}
+        <tr>
+          <td class="num">{{ row.seq }}</td>
+          <td class="mono">{{ row.day }}</td>
+          <td class="mono">{{ row.link_day }}</td>
+          <td class="nowrap">{{ row.kind_label }}</td>
+          <td class="mono">{{ row.ref }}</td>
+          <td class="num">{{ row.amount | dec }}</td>
+          <td class="mono">{{ row.source }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="empty">还没有调整分录。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section">
+  <h2>订单核对</h2>
+  <div class="wide">
+    <table class="spec dense" data-sortable>
+      <caption>订单有效额与多笔支付合计按金额核对</caption>
+      <thead>
+        <tr><th>订单号</th><th>账日</th><th class="num">订单额</th><th class="num">已付</th><th class="num">差额</th><th>状态</th></tr>
+      </thead>
+      <tbody>
+        {% for row in orders %}
+        <tr>
+          <td class="mono">{{ row.order_id }}</td>
+          <td class="mono">{{ row.biz_day }}</td>
+          <td class="num">{{ row.order_amount | dec }}</td>
+          <td class="num">{{ row.paid_amount | dec }}</td>
+          <td class="num">{{ row.diff | dec }}</td>
+          <td><span class="flag" data-tone="{{ 'ok' if row.status == 'balanced' else ('info' if row.status == 'canceled' else 'bad') }}">{{ row.status_label }}</span></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="empty">还没有订单分录。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section">
+  <h2>运行记录</h2>
+  <div class="wide">
+    <table class="spec dense" data-sortable>
+      <thead>
+        <tr><th>run_id</th><th>来源</th><th>状态</th><th class="num">进度</th><th class="num">记账</th><th class="num">跳过</th><th>开始</th><th>说明</th></tr>
+      </thead>
+      <tbody>
+        {% for row in payload.runs %}
+        <tr>
+          <td class="mono"><span class="truncate" title="{{ row.run_id }}">{{ row.run_id }}</span></td>
+          <td class="nowrap">{{ row.source_label }}</td>
+          <td><span class="flag" data-tone="{{ 'ok' if row.status == 'done' else ('warn' if row.status in ('running', 'partial') else 'bad') }}">{{ row.status_label }}</span></td>
+          <td class="num">{{ row.processed }}/{{ row.total }}</td>
+          <td class="num">{{ row.booked }}</td>
+          <td class="num">{{ row.skipped }}</td>
+          <td class="mono">{{ row.created_at | ts }}</td>
+          <td class="hint">{{ row.note or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="empty">还没有对账运行。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}<script src="/static/recon.js"></script>{% endblock %}

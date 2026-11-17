@@ -174,6 +174,52 @@ REASONS = {
     "X_EMPTY_SELECTION": _r(
         "X_EMPTY_SELECTION", WARN, "spec",
         "导出的行集为空", "先跑一次接入再导出"),
+    # ---- M8 支付对账 ----
+    "R_CLOSE_BALANCED": _r(
+        "R_CLOSE_BALANCED", INFO, "recon",
+        "平账关账，账面按关账时保留", "关账后该日的订单、支付与差异不再变"),
+    "R_CLOSE_WITH_DIFF": _r(
+        "R_CLOSE_WITH_DIFF", WARN, "recon",
+        "未平账带差异关账，差异金额随关账保留", "差异留在本日，不跨账日互抵"),
+    "R_DAY_CLOSED": _r(
+        "R_DAY_CLOSED", ERROR, "recon",
+        "账日已关账，不能重复关账", "已关账日的账面按关账时保留"),
+    "R_DAY_MISSING": _r(
+        "R_DAY_MISSING", ERROR, "recon",
+        "账日不存在", "先跑支付对账，账日由订单与支付流水产生"),
+    "R_ADJUST_NEXT_OPEN": _r(
+        "R_ADJUST_NEXT_OPEN", INFO, "recon",
+        "原日已关账，转入下一未关账日作关联原日的调整", "调整不计入入账日自身差异"),
+    "R_CORRECTION": _r(
+        "R_CORRECTION", INFO, "recon",
+        "相同流水改金额，识别为更正，差额补记", "原流水不覆盖"),
+    "R_REPRICE": _r(
+        "R_REPRICE", INFO, "recon",
+        "订单改价，差额记更正", "应收按最新订单金额"),
+    "R_CANCEL": _r(
+        "R_CANCEL", INFO, "recon",
+        "订单取消，冲减应收", "原订单分录保留，取消另记一笔"),
+    "R_REVERSAL": _r(
+        "R_REVERSAL", INFO, "recon",
+        "撤销支付已冲回", "原支付流水保留，冲回另记一笔"),
+    "R_REVOKE_UNKNOWN": _r(
+        "R_REVOKE_UNKNOWN", ERROR, "recon",
+        "撤销的支付流水不存在", "确认流水号后再撤销"),
+    "R_EVENT_BAD": _r(
+        "R_EVENT_BAD", ERROR, "recon",
+        "补数事件格式不合法", "按事件类型补齐流水号、金额与账日"),
+    "R_IDEMPOTENT_SKIP": _r(
+        "R_IDEMPOTENT_SKIP", INFO, "recon",
+        "重复流水已跳过，不新增分录", "同一观测重放结果不变"),
+    "R_RUN_PARTIAL": _r(
+        "R_RUN_PARTIAL", WARN, "recon",
+        "对账运行中断，已记账进度保留", "用续跑从断点继续"),
+    "R_NO_RUN": _r(
+        "R_NO_RUN", WARN, "recon",
+        "没有可续跑的对账运行", "先跑一次支付对账"),
+    "R_RECON_EMPTY": _r(
+        "R_RECON_EMPTY", WARN, "recon",
+        "没有可记账的订单或支付流水", "先跑接入，确认样本里有订单与支付段"),
     # ---- M7 建模影响评估 ----
     "M_CHANGE_DERIVED": _r(
         "M_CHANGE_DERIVED", INFO, "impact",

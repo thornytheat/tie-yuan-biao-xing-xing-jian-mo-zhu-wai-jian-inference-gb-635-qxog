@@ -23,6 +23,7 @@ NAV = (
     ("/keys", "键推断", "keys"),
     ("/star", "星型建议", "star"),
     ("/impact", "影响评估", "impact"),
+    ("/recon", "支付对账", "recon"),
     ("/batches", "版本历史", "batches"),
     ("/spec", "规格单", "spec"),
 )

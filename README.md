@@ -25,6 +25,7 @@
 | M5 版本与重跑 | 批次历史、批次详情、续跑 | `GET /api/batches` `POST /api/batches/{id}/resume` |
 | M6 规格单导出 | 规格单、列规格 CSV、证据 CSV、清单 JSON | `GET /api/spec` |
 | M7 建模影响评估 | 变更影响面、迁移顺序、回滚提示、单条变更试算 | `GET /api/impact` `POST /api/impact/propose` |
+| M8 支付对账 | 按日对账、补数、关账、续跑、订单核对 | `POST /api/recon/run` `POST /api/recon/events` `POST /api/recon/close` `POST /api/recon/resume` `GET /api/recon` |
 
 ## 核心规则
 
@@ -36,6 +37,9 @@
 6. 影响级别 = 引用方式 × 优先级 × 变更破坏性：P1 精确引用加破坏性变更判中断，整表引用一律核对。
 7. 唯一性先定空值规则：含空值的键免检（与 UNIQUE 一致）或全算，两者结论相反就阻断。
 8. 迁移顺序按依赖拓扑排：清洗 → 类型 → 改名 → 键 → 引用；成环整组阻断。
+9. 支付对账按日记：应收=订单有效额，实收=支付有效额，差异=实收-应收，差额不跨账日；
+   取消、改价、更正、撤销一律补记差额分录，原流水不覆盖；未关账日反映最新实收，
+   已关账日按关账时保留，迟到与更正转入下一未关账日作关联原日的调整。
 
 数字化定义与字段含义见 `docs/DATA-DICTIONARY.md`，陷阱与测试映射见 `docs/DEPTH.md`。
 
@@ -72,14 +76,15 @@ pytest -q
 | `/star` | 星型建议 |
 | `/batches` | 版本历史 |
 | `/impact` | 影响评估 |
+| `/recon` | 支付对账 |
 | `/spec` | 规格单（可打印） |
 
 ## 目录
 
 ```text
-app/                 main/config/errors/reasons/manifest/store/web + 七个功能模块
-app/templates/       base + 7 页
-app/static/          theme/layout/components/print.css + 4 个 js
+app/                 main/config/errors/reasons/manifest/store/web + 八个功能模块
+app/templates/       base + 8 页
+app/static/          theme/layout/components/print.css + 5 个 js
 docs/                DEPTH.md  DATA-DICTIONARY.md
 sample_data/         DDL + 两个样本导出件（一脏一 GB18030）+ 下游登记表
 tests/               conftest + 每模块 1 个文件 + 端到端 + fixtures

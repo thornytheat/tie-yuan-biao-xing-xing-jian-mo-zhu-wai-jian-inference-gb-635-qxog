@@ -31,6 +31,7 @@ STAGE_LABELS = {
     "keys": "键推断",
     "spec": "规格单",
     "impact": "影响评估",
+    "recon": "支付对账",
 }
 
 # 编码回退链：gb18030 是 gbk/gb2312 的超集，放在最后兜底

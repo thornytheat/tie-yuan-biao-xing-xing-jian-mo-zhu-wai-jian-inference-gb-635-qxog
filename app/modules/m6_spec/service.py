@@ -5,6 +5,7 @@ import json
 
 from ..m4_keys import evidence
 from ..m5_batches import service as batch_service
+from ..m8_recon import service as recon_service
 from . import csv_out, json_out, spec_out
 
 
@@ -13,6 +14,7 @@ def build(store, batch_id: str) -> dict:
     notes = evidence.footnotes(bundle["keys"], bundle["star"],
                                bundle["accounts"] or {})
     document = spec_out.document(bundle, notes)
+    document["recon"] = recon_service.spec_section(store)
     document["evidence_rows"] = [
         {"table_name": row.get("table_name"), "column_name": row.get("column_name"),
          "row_ref": row.get("row_ref"), "raw_value": row.get("raw_value"),
@@ -25,7 +27,8 @@ def build(store, batch_id: str) -> dict:
 def to_payload(document: dict) -> dict:
     """接口返回：去掉模板专用字段，只留数据。"""
     fields = ["title", "accounts", "account_rows", "columns", "objects",
-              "facts", "dims", "pending", "footnotes", "total_rows", "tables"]
+              "facts", "dims", "pending", "footnotes", "total_rows", "tables",
+              "recon"]
     payload = {field: document.get(field) for field in fields}
     payload["keys"] = document.get("key_rows")
     payload["batch_id"] = document["batch"]["batch_id"]
